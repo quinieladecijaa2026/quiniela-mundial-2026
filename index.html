@@ -104,6 +104,16 @@
         .classified-item .rank { background: var(--gold); color: #fff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; flex-shrink: 0; }
         .classified-item .pos { font-size: 0.72rem; color: #888; margin-left: auto; }
 
+        /* Validación — campos incompletos */
+        .score-input.error, .ko-score.error { border-color: #e53935 !important; background: #fff5f5; animation: shake 0.3s; }
+        .bracket-match.error { border-left-color: #e53935; }
+        .match-row.error .score-input { border-color: #e53935 !important; background: #fff5f5; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+
+        /* Toast de error */
+        #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); background: #c62828; color: white; padding: 13px 24px; border-radius: 10px; font-weight: 700; font-size: 0.92rem; box-shadow: 0 6px 20px rgba(0,0,0,0.3); opacity: 0; transition: all 0.35s; pointer-events: none; z-index: 9999; max-width: 90vw; text-align: center; }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
         @media (max-width: 600px) {
             .header h1 { font-size: 1.6rem; }
             .step-tab { font-size: 0.65rem; padding: 10px 3px; }
@@ -113,6 +123,7 @@
     </style>
 </head>
 <body>
+<div id="toast"></div>
 <div class="container">
     <div class="header">
         <h1>🏆 Quiniela Mundial 2026</h1>
@@ -120,13 +131,13 @@
     </div>
 
     <div class="steps-nav">
-        <div class="step-tab active" id="tab1" onclick="goStep(1)">1. Grupos</div>
-        <div class="step-tab" id="tab2" onclick="goStep(2)">2. Dieciseisavos</div>
-        <div class="step-tab" id="tab3" onclick="goStep(3)">3. Octavos</div>
-        <div class="step-tab" id="tab4" onclick="goStep(4)">4. Cuartos</div>
-        <div class="step-tab" id="tab5" onclick="goStep(5)">5. Semis & Final</div>
-        <div class="step-tab" id="tab6" onclick="goStep(6)">6. Premios</div>
-        <div class="step-tab" id="tab7" onclick="goStep(7)">7. Registro</div>
+        <div class="step-tab active" id="tab1">1. Grupos</div>
+        <div class="step-tab" id="tab2">2. Dieciseisavos</div>
+        <div class="step-tab" id="tab3">3. Octavos</div>
+        <div class="step-tab" id="tab4">4. Cuartos</div>
+        <div class="step-tab" id="tab5">5. Semis & Final</div>
+        <div class="step-tab" id="tab6">6. Premios</div>
+        <div class="step-tab" id="tab7">7. Registro</div>
     </div>
 
     <!-- PASO 1: FASE DE GRUPOS -->
@@ -219,7 +230,7 @@
 
         <div class="btn-panel">
             <button class="btn btn-back" onclick="goStep(5)">🡄 Volver</button>
-            <button class="btn btn-next" onclick="goStep(7)">Siguiente: Registro ➔</button>
+            <button class="btn btn-next" onclick="proceedToRegistro()">Siguiente: Registro ➔</button>
         </div>
     </div>
 
@@ -346,8 +357,85 @@ function getTeamByPos(group, pos) {
 
 function onGroupInput() { calcGroupStandings(); }
 
+// ─── VALIDACIÓN ──────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function clearErrors() {
+    document.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
+}
+
+// Valida todos los partidos de fase de grupos
+function validateGroups() {
+    clearErrors();
+    let missing = 0;
+    for (let letra in grupos) {
+        groupMatchups.forEach((_, idx) => {
+            const lEl = document.getElementById(`g_${letra}_${idx}_L`);
+            const vEl = document.getElementById(`g_${letra}_${idx}_V`);
+            const lv = lEl?.value.trim();
+            const vv = vEl?.value.trim();
+            const incomplete = lv === '' || vv === '' || isNaN(parseInt(lv)) || isNaN(parseInt(vv));
+            if (incomplete) {
+                lEl?.classList.add('error');
+                vEl?.classList.add('error');
+                lEl?.closest('.match-row')?.classList.add('error');
+                missing++;
+            }
+        });
+    }
+    if (missing > 0) {
+        showToast(`⚠️ Faltan ${missing} resultado${missing>1?'s':''} en la fase de grupos. Completa todos los partidos para continuar.`);
+        // Scroll al primer error
+        const first = document.querySelector('.score-input.error');
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return false;
+    }
+    return true;
+}
+
+// Valida una ronda eliminatoria: marcador en ambos campos + ganador (si empate, penal elegido)
+function validateKnockoutRound(ids, roundName) {
+    clearErrors();
+    let missing = [];
+    ids.forEach((id, i) => {
+        const lEl = document.getElementById(`${id}_L`);
+        const vEl = document.getElementById(`${id}_V`);
+        const lv = lEl?.value.trim();
+        const vv = vEl?.value.trim();
+        const noScore = lv === '' || vv === '' || isNaN(parseInt(lv)) || isNaN(parseInt(vv));
+        const gl = parseInt(lv);
+        const gv = parseInt(vv);
+        const isTie = !noScore && gl === gv;
+        const noPenWinner = isTie && !penaltyWinners[id];
+
+        if (noScore || noPenWinner) {
+            const card = document.getElementById(`card_${id}`);
+            if (card) card.classList.add('error');
+            lEl?.classList.add('error');
+            vEl?.classList.add('error');
+            missing.push(i + 1);
+        }
+    });
+    if (missing.length > 0) {
+        const plural = missing.length > 1 ? 'partidos' : 'partido';
+        showToast(`⚠️ ${roundName}: completa el ${plural} ${missing.map(n=>'#'+n).join(', ')} antes de continuar.`);
+        const firstCard = document.querySelector('.bracket-match.error');
+        if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return false;
+    }
+    return true;
+}
+
 // ─── PASO 2: DIECISEISAVOS ───────────────────────────────────────────────────
 function proceedToR32() {
+    if (!validateGroups()) return;
     calcGroupStandings();
     buildR32();
     goStep(2);
@@ -367,6 +455,8 @@ function buildR32() {
 
 // ─── PASO 3: OCTAVOS ────────────────────────────────────────────────────────
 function proceedToR16() {
+    const ids = r32Pairings.map((_, i) => `r32_${i}`);
+    if (!validateKnockoutRound(ids, 'Dieciseisavos')) return;
     calcR32Winners();
     buildR16();
     goStep(3);
@@ -388,6 +478,8 @@ function buildR16() {
 
 // ─── PASO 4: CUARTOS ────────────────────────────────────────────────────────
 function proceedToQF() {
+    const ids = Array.from({length:8}, (_,i) => `r16_${i}`);
+    if (!validateKnockoutRound(ids, 'Octavos de final')) return;
     calcR16Winners();
     buildQF();
     goStep(4);
@@ -409,6 +501,8 @@ function buildQF() {
 
 // ─── PASO 5: SEMIS + FINAL ──────────────────────────────────────────────────
 function proceedToSF() {
+    const ids = Array.from({length:4}, (_,i) => `qf_${i}`);
+    if (!validateKnockoutRound(ids, 'Cuartos de final')) return;
     calcQFWinners();
     buildSF();
     goStep(5);
@@ -463,7 +557,34 @@ function updateFinalRound() {
 
 // ─── PASO 6: PREMIOS ────────────────────────────────────────────────────────
 function proceedToPremios() {
+    const sfIds = ['sf_0','sf_1'];
+    if (!validateKnockoutRound(sfIds, 'Semifinales')) return;
+    const tpIds = ['tp_0'];
+    if (!validateKnockoutRound(tpIds, 'Tercer puesto')) return;
+    const finIds = ['final_0'];
+    if (!validateKnockoutRound(finIds, 'Gran Final')) return;
     goStep(6);
+}
+
+// ─── PASO 7: REGISTRO ───────────────────────────────────────────────────────
+function proceedToRegistro() {
+    clearErrors();
+    const bota = document.getElementById('botaOro').value.trim();
+    const mvp  = document.getElementById('mvp').value.trim();
+    let ok = true;
+    if (!bota) {
+        document.getElementById('botaOro').classList.add('error');
+        ok = false;
+    }
+    if (!mvp) {
+        document.getElementById('mvp').classList.add('error');
+        ok = false;
+    }
+    if (!ok) {
+        showToast('⚠️ Ingresa tu pronóstico para la Bota de Oro y el Balón de Oro antes de continuar.');
+        return;
+    }
+    goStep(7);
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -707,7 +828,14 @@ async function enviarQuiniela() {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 renderGroups();
+
+// Limpiar error al corregir campo
+document.addEventListener('input', e => {
+    if (e.target.classList.contains('error')) {
+        e.target.classList.remove('error');
+        e.target.closest('.match-row')?.classList.remove('error');
+    }
+});
 </script>
 </body>
 </html>
-
