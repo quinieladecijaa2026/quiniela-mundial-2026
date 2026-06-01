@@ -620,68 +620,123 @@ function collectKnockoutRound(ids) {
 }
 
 // ─── ENVÍO ───────────────────────────────────────────────────────────────────
+// =============================================================================
+// CONFIGURACIÓN DE CONEXIÓN (Modifica esto con tu URL real)
+// =============================================================================
+const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbxylRG_umAxTysOV50bbBLMeObER_jP7w0gh5bZCFmnbsOVT52Qvu7IisisfPvAg6w/exec'; 
+
+// =============================================================================
+// FUNCIÓN OPTIMIZADA ENVIAR QUINIELA
+// =============================================================================
 async function enviarQuiniela() {
-    const btn = document.getElementById('btnSubmit');
-    const ped = id => document.getElementById(id).value.trim();
-    const [cedula, nombre, gerencia, telefono] = [ped('cedula'), ped('nombre'), ped('gerencia'), ped('telefono')];
-    if (!cedula || !nombre || !gerencia || !telefono) {
-        showToast("⚠️ Por favor completa todos tus datos personales.");
-        return;
-    }
+  const btn = document.getElementById('btnSubmit'); // Asegúrate de que tu botón tenga id="btnSubmit"
+  const ped = id => document.getElementById(id) ? document.getElementById(id).value.trim() : "";
+  
+  // Extraer datos personales del usuario
+  const cedula = ped('cedula');
+  const nombre = ped('nombre');
+  const gerencia = ped('gerencia');
+  const telefono = ped('telefono');
 
-    let pronosticoGrupos = {};
+  // 1. Validación de seguridad para campos vacíos
+  if (!cedula || !nombre || !gerencia || !telefono) {
+    // Si usas showToast() puedes cambiar esto por: showToast("⚠️ Por favor completa tus datos.");
+    alert("⚠️ Por favor completa todos tus datos personales y de contacto.");
+    return;
+  }
+
+  // 2. Fluidez y control de doble clic: Desactivar botón inmediatamente
+  btn.textContent = "⏳ Procesando y Guardando..."; 
+  btn.disabled = true;
+
+  try {
+    const partidosPlano = [];
+    
+    // 3. Recolección de Fase de Grupos en base a tus variables del sistema
     for (let letra in grupos) {
-        pronosticoGrupos[letra] = groupMatchups.map((p, idx) => ({
-            local: grupos[letra][p[0]], visitante: grupos[letra][p[1]],
-            gLocal: document.getElementById(`g_${letra}_${idx}_L`)?.value,
-            gVisitante: document.getElementById(`g_${letra}_${idx}_V`)?.value
-        }));
-    }
-
-    const payload = {
-        action: "guardarQuiniela",
-        usuario: { cedula, nombre, gerencia, telefono },
-        pronosticos: {
-            grupos: pronosticoGrupos,
-            dieciseisavos: collectKnockoutRound(matchStructure.r32.map(m=>'m'+m.id)),
-            octavos:       collectKnockoutRound(matchStructure.r16.map(m=>'m'+m.id)),
-            cuartos:       collectKnockoutRound(matchStructure.qf.map(m=>'m'+m.id)),
-            semifinales:   collectKnockoutRound(matchStructure.sf.map(m=>'m'+m.id)),
-            tercerPuesto:  collectKnockoutRound(matchStructure.tp.map(m=>'m'+m.id)),
-            final:         collectKnockoutRound(matchStructure.fin.map(m=>'m'+m.id)),
-            premios: { botaOro: ped('botaOro'), mvp: ped('mvp'), guanteOro: ped('guanteOro') }
-        }
-    };
-    btn.textContent = "⏳ Guardando en base de datos..."; btn.disabled = true;
-    try {
-        const response = await fetch(URL_SCRIPT, {
-            method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload)
+      groupMatchups.forEach((p, idx) => {
+        const idPartido = `grupo_${letra}_${idx}`;
+        const local = grupos[letra][p[0]];
+        const visitante = grupos[letra][p[1]];
+        const gLocal = document.getElementById(`g_${letra}_${idx}_L`)?.value;
+        const gVisitante = document.getElementById(`g_${letra}_${idx}_V`)?.value;
+        
+        partidosPlano.push({
+          idPartido, fase: 'grupos', local, visitante,
+          gLocal, gVisitante, penales: false, ganadorPenales: null
         });
-        const data = await response.json();
-        if (data.success) {
-            document.getElementById('step7').innerHTML = `
-                <div style="text-align:center;padding:60px 20px">
-                    <div style="font-size:4rem">✅</div>
-                    <h2 style="color:var(--primary);margin-top:20px">¡Quiniela Registrada con Éxito!</h2>
-                    <p style="margin-top:12px;font-size:1.1rem;color:#555">Tus pronósticos están seguros.</p>
-                </div>`;
-        } else {
-            alert(`❌ Error: ${data.error}`);
-            btn.textContent = "💾 REGISTRAR"; btn.disabled = false;
-        }
-    } catch (err) {
-        alert("❌ Error de conexión. Intenta de nuevo.");
-        btn.textContent = "💾 REGISTRAR"; btn.disabled = false;
+      });
     }
-}
 
-// Quitar errores visuales on input
-document.addEventListener('input', e => {
-    if (e.target.classList.contains('error')) {
-        e.target.classList.remove('error');
-        e.target.closest('.match-row, .bracket-match, .input-group')?.classList.remove('error');
+    // 4. Recolección de Fases Eliminatorias (Preservando mapeo de IDs y penales)
+    const fases = [
+      { nombre: 'dieciseisavos', matches: matchStructure.r32 },
+      { nombre: 'octavos', matches: matchStructure.r16 },
+      { nombre: 'cuartos', matches: matchStructure.qf },
+      { nombre: 'semifinales', matches: matchStructure.sf },
+      { nombre: 'tercerPuesto', matches: matchStructure.tp },
+      { nombre: 'final', matches: matchStructure.fin }
+    ];
+
+    for (const fase of fases) {
+      for (const match of fase.matches) {
+        const id = 'm' + match.id;
+        const local = getTeamName(id, 1); // Llama a tu función nativa para obtener nombres
+        const visitante = getTeamName(id, 2);
+        const gLocal = document.getElementById(`${id}_L`)?.value;
+        const gVisitante = document.getElementById(`${id}_V`)?.value;
+        const penales = !!penaltyWinners[id];
+        const ganadorPenales = penaltyWinners[id] || null;
+        
+        partidosPlano.push({
+          idPartido: id, fase: fase.nombre, local, visitante,
+          gLocal, gVisitante, penales, ganadorPenales
+        });
+      }
     }
-});
+
+    // 5. Construcción del Payload unificado para Google Sheets
+    const payload = {
+      action: "guardarQuiniela",
+      usuario: { cedula, nombre, gerencia, telefono },
+      pronosticos: partidosPlano,
+      premios: {
+        botaOro: ped('botaOro'),
+        mvp: ped('mvp'),
+        guanteOro: ped('guanteOro')
+      }
+    };
+
+    // 6. Envío Asíncrono optimizado mediante POST directo sin headers pesados
+    const response = await fetch(URL_SCRIPT, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    
+    // 7. Respuesta y feedback en la interfaz de usuario
+    if (data.success) {
+      // Reemplaza la sección del contenedor final para dar un feedback limpio
+      document.getElementById('step7').innerHTML = `
+        <div style="text-align:center;padding:60px;font-family:sans-serif;">
+          <div style="font-size:4rem">✅</div>
+          <h2 style="color:#1a472a;">¡Quiniela Registrada con Éxito!</h2>
+          <p>Tus pronósticos ya están en la base de datos oficial.</p>
+        </div>`;
+    } else {
+      throw new Error(data.error);
+    }
+    
+  } catch (err) {
+    console.error(err);
+    alert(`❌ Hubo un error al registrar: ${err.message}. Intenta nuevamente.`);
+    
+    // Si falla, reactivamos el botón para permitir reintentar
+    btn.textContent = "💾 REGISTRAR"; 
+    btn.disabled = false;
+  }
+}
 
 // ─── PERSISTENCIA Y VALIDACIÓN ──────────────────────────────────
 function saveProgress() {
