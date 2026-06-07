@@ -1153,37 +1153,7 @@ if (data.penaltyWinners) {
 
     });
 
-  setTimeout(() => {
-
-    Object.keys(penaltyWinners)
-      .forEach(id => {
-
-        const ganador =
-          penaltyWinners[id];
-
-        const btn1 =
-          document.getElementById(`${id}_pen_t1`);
-
-        const btn2 =
-          document.getElementById(`${id}_pen_t2`);
-
-        if (!btn1 || !btn2) return;
-
-        if (ganador === getTeamName(id, 1)) {
-
-          btn1.classList.add('selected');
-
-        } else {
-
-          btn2.classList.add('selected');
-
-        }
-
-        updateBanner(id);
-
-      });
-
-  }, 500);
+  
 
 }
 }
@@ -1199,26 +1169,40 @@ if (data.penaltyWinners) {
 
     
     document.addEventListener('DOMContentLoaded', () => {
-      ['cedula', 'telefono'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', e => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
-      });
 
-      renderGroups();
-
-loadProgress();
-
-calcGroupStandings();
-
-Object.keys(penaltyWinners)
-  .forEach(id => {
-
-    updateBanner(id);
-
+  ['cedula', 'telefono'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener(
+        'input',
+        e => e.target.value =
+          e.target.value.replace(/[^0-9]/g, '')
+      );
+    }
   });
 
-updateProgressBar();
+  renderGroups();
+
+  calcGroupStandings();
+
+  renderKnockoutRound('r32','r32-bracket');
+  renderKnockoutRound('r16','r16-bracket');
+  renderKnockoutRound('qf','qf-bracket');
+  renderKnockoutRound('sf','sf-bracket');
+  renderKnockoutRound('tp','tp-bracket');
+  renderKnockoutRound('fin','final-bracket');
+
+  // AQUÍ
+  loadProgress();
+
+  Object.keys(penaltyWinners)
+    .forEach(id => {
+      updateBanner(id);
     });
+
+  updateProgressBar();
+
+});
 
     document.addEventListener('input', () => {
       saveProgress();
