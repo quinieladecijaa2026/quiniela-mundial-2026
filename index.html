@@ -699,31 +699,67 @@
       };
     }
 
-    function descargarPronostico() {
-      const payload = buildPronosticoObjeto();
+function descargarPronostico() {
+  const payload = buildPronosticoObjeto();
 
-      if (!payload.usuario.cedula || !payload.usuario.nombre || !payload.usuario.gerencia || !payload.usuario.telefono) {
-        showToast('⚠️ Completa tus datos personales antes de descargar.');
-        return;
-      }
+  if (!payload.usuario.cedula || !payload.usuario.nombre || !payload.usuario.gerencia || !payload.usuario.telefono) {
+    showToast('⚠️ Completa tus datos personales antes de descargar.');
+    return;
+  }
 
-      const data = {
-        generadoEn: new Date().toISOString(),
-        usuario: payload.usuario,
-        premios: payload.premios,
-        pronosticos: payload.pronosticos
-      };
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('No se pudo cargar la librería PDF.');
+    return;
+  }
 
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `quiniela_${payload.usuario.cedula || 'pronostico'}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  let y = 12;
+  const left = 14;
+  const lineHeight = 6;
+  const maxY = 285;
+
+  const addText = (text, size = 10, bold = false) => {
+    if (y > maxY) {
+      doc.addPage();
+      y = 12;
     }
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(String(text), left, y);
+    y += lineHeight;
+  };
+
+  addText('QUINIELA MUNDIAL 2026', 16, true);
+  y += 4;
+
+  addText(`Nombre: ${payload.usuario.nombre}`, 11);
+  addText(`Cédula: ${payload.usuario.cedula}`, 11);
+  addText(`Gerencia: ${payload.usuario.gerencia}`, 11);
+  addText(`Teléfono: ${payload.usuario.telefono}`, 11);
+  y += 3;
+
+  addText('PRONOSTICOS', 13, true);
+  y += 2;
+
+  payload.pronosticos.forEach((p, index) => {
+    addText(`${index + 1}. ${p.fase} - ${p.local} vs ${p.visitante}`, 9, true);
+    addText(`   Marcador: ${p.gLocal} - ${p.gVisitante}`, 9);
+    if (p.ganadorPenales) {
+      addText(`   Penales: ${p.ganadorPenales}`, 9);
+    }
+    y += 1;
+  });
+
+  y += 2;
+  addText('BONUS', 13, true);
+  addText(`Bota de Oro: ${payload.premios.botaOro || '-'}`, 10);
+  addText(`MVP: ${payload.premios.mvp || '-'}`, 10);
+  addText(`Guante de Oro: ${payload.premios.guanteOro || '-'}`, 10);
+
+  doc.save(`quiniela_${payload.usuario.cedula}.pdf`);
+}
 
     async function enviarQuiniela() {
       const btn = document.getElementById('btnSubmit');
